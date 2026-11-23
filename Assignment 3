@@ -1,0 +1,174 @@
+
+
+import re
+import time
+import tracemalloc
+# -------------------------------
+# 1. NORMALISATION FUNCTIONS
+# -------------------------------
+def normalize_name(name):
+    if not name:
+        return ""
+    name = name.lower().strip()
+    name = re.sub(r"^(dr|mr|mrs|ms)\.?\s+", "", name)
+    name = re.sub(r"[^a-z\s]", "", name)
+    return " ".join(name.split())
+def normalize_phone(phone):
+    if not phone:
+        return ""
+    digits = re.sub(r"\D", "", str(phone))
+    # Assume Indian phone numbers
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    return digits
+def normalize_email(email):
+    return email.strip().lower() if email else ""
+# -------------------------------
+# 2. DISJOINT SET DATA STRUCTURE
+# -------------------------------
+class DisjointSet:
+    def __init__(self, n):
+        self.parent = list(range(n))
+        self.size = [1] * n
+    def find(self, x):
+        if self.parent[x] != x:
+            self.parent[x] = self.find(self.parent[x])
+        return self.parent[x]
+    def union(self, a, b):
+        a = self.find(a)
+        b = self.find(b)
+        if a == b:
+            return
+        if self.size[a] < self.size[b]:
+            a, b = b, a
+        self.parent[b] = a
+        self.size[a] += self.size[b]
+# -------------------------------
+# 3. CONTACT MERGING
+# -------------------------------
+def merge_contacts(contacts):
+    n = len(contacts)
+    ds = DisjointSet(n)
+    # Dictionary: normalized phone -> contact index
+    phone_owner = {}
+    # Store normalized information
+    cleaned = []
+    for i, contact in enumerate(contacts):
+        name = normalize_name(contact.get("name", ""))
+        phones = {
+            normalize_phone(p)
+            for p in contact.get("phones", [])
+            if normalize_phone(p)
+        }
+        emails = {
+            normalize_email(e)
+            for e in contact.get("emails", [])
+            if normalize_email(e)
+        }
+        cleaned.append({
+            "name": name,
+            "phones": phones,
+            "emails": emails
+        })
+        # Merge contacts sharing a phone number
+        for phone in phones:
+            if phone in phone_owner:
+                ds.union(i, phone_owner[phone])
+            else:
+                phone_owner[phone] = i
+    # -------------------------------
+    # 4. BUILD FINAL CONTACT GROUPS
+    # -------------------------------
+    merged = {}
+    for i, contact in enumerate(cleaned):
+        root = ds.find(i)
+        if root not in merged:
+            merged[root] = {
+                "names": set(),
+                "phones": set(),
+                "emails": set()
+            }
+        if contact["name"]:
+            merged[root]["names"].add(contact["name"])
+        merged[root]["phones"].update(contact["phones"])
+        merged[root]["emails"].update(contact["emails"])
+    return list(merged.values())
+# -------------------------------
+# 5. DISPLAY RESULTS
+# -------------------------------
+def display_contacts(contacts):
+    for i, contact in enumerate(contacts, 1):
+        print("\nContact", i)
+        print("Names:", sorted(contact["names"]))
+        print("Phone numbers:", sorted(contact["phones"]))
+        print("Emails:", sorted(contact["emails"]))
+# -------------------------------
+# 6. TEST WITH THREE SOURCES
+# -------------------------------
+phone1 = [
+    {
+        "name": "Dr. Ravi",
+        "phones": ["+91 98400 12345"],
+        "emails": ["Ravi@gmail.com"]
+    },
+    {
+        "name": "Priya",
+        "phones": ["9876543210"],
+        "emails": ["priya@gmail.com"]
+    }
+]
+phone2 = [
+    {
+        "name": "ravi kumar",
+        "phones": ["9840012345", "9123456789"],
+        "emails": ["ravi@yahoo.com"]
+    },
+    {
+        "name": "Arun",
+        "phones": ["9988776655"],
+        "emails": []
+    }
+]
+sim_card = [
+    {
+        "name": "RAVI",
+        "phones": ["+91-98400-12345"],
+        "emails": ["RAVI@gmail.com"]
+    },
+    {
+        "name": "Priya",
+        "phones": ["9876543210"],
+        "emails": ["priya@yahoo.com"]
+    }
+]
+all_contacts = phone1 + phone2 + sim_card
+result = merge_contacts(all_contacts)
+print("MERGED CONTACT LIST")
+display_contacts(result)
+# -------------------------------
+# 7. PERFORMANCE MEASUREMENT
+# -------------------------------
+def generate_contacts(n):
+    contacts = []
+    for i in range(n):
+        contacts.append({
+            "name": "Person " + str(i),
+            "phones": ["9" + str(100000000 + i)],
+            "emails": [f"person{i}@gmail.com"]
+        })
+    return contacts
+def benchmark(n):
+    contacts = generate_contacts(n)
+    tracemalloc.start()
+    start = time.perf_counter()
+    result = merge_contacts(contacts)
+    elapsed = time.perf_counter() - start
+    current, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    print("\nContacts:", n)
+    print("Merged contacts:", len(result))
+    print("Execution time:", round(elapsed, 4), "seconds")
+    print("Peak memory:", round(peak / (1024 * 1024), 2), "MB")
+print("\nPERFORMANCE TEST")
+benchmark(1000)
+benchmark(100000)
