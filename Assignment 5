@@ -1,0 +1,251 @@
+import re
+import sqlite3
+import time
+import statistics
+from collections import Counter
+
+# =========================================
+# B4.1 - SENTIMENT ANALYSIS
+# =========================================
+
+POSITIVE = {
+    "good", "clean", "fast", "helpful", "improved"
+}
+
+NEGATIVE = {
+    "bad", "dirty", "slow", "rude", "smoke", "broken"
+}
+
+NEGATORS = {"not", "never", "no"}
+
+
+def score(text):
+    """Calculate sentiment score using word matching."""
+
+    words = re.findall(r"[a-z]+", text.lower())
+
+    total = 0
+    previous_word = ""
+
+    for word in words:
+        value = 0
+
+        if word in POSITIVE:
+            value = 1
+        elif word in NEGATIVE:
+            value = -1
+
+        if value != 0:
+            if previous_word in NEGATORS:
+                value = -value
+
+            total += value
+
+        previous_word = word
+
+    return total
+
+
+def label(text):
+    s = score(text)
+
+    if s > 0:
+        return "positive"
+    elif s < 0:
+        return "negative"
+    else:
+        return "neutral"
+
+
+# =========================================
+# B4.1 - TEST DATA: 50 COMPLAINTS
+# =========================================
+
+examples = [
+    ("Roads are clean and the bus was fast.", "positive"),
+    ("Smoke from the factory, air is bad.", "negative"),
+    ("The staff were not helpful.", "negative"),
+    ("Not bad, service improved.", "positive"),
+    ("The bus is good and clean.", "positive"),
+    ("The road is dirty and slow.", "negative"),
+    ("The service was good but the bus was broken.", "neutral"),
+    ("The driver was rude and the service was bad.", "negative"),
+    ("The station is improved and clean.", "positive"),
+    ("The bus was not slow and was good.", "positive")
+]
+
+complaints = []
+human_labels = []
+
+# Repeat the 10 different complaints for 5 stations
+for station_number in range(1, 6):
+    for text, human_label in examples:
+        complaints.append({
+            "station": f"Station_{station_number}",
+            "day": f"2026-11-{station_number:02d}",
+            "text": text
+        })
+
+        human_labels.append(human_label)
+
+
+# =========================================
+# B4.1 - COMPARE AI WITH HUMAN LABELS
+# =========================================
+
+print("========== SENTIMENT ANALYSIS ==========")
+
+agree = 0
+
+for i, complaint in enumerate(complaints):
+
+    predicted = label(complaint["text"])
+    actual = human_labels[i]
+
+    if predicted == actual:
+        agree += 1
+
+    if i < 10:
+        print(predicted, "|", complaint["text"])
+
+print("\nTotal complaints:", len(complaints))
+print("Human and AI agreement:", agree, "/", len(complaints))
+
+accuracy = (agree / len(complaints)) * 100
+
+print("Agreement percentage:", round(accuracy, 2), "%")
+
+
+# =========================================
+# B4.2 - DATABASE CREATION
+# =========================================
+
+print("\n========== DATABASE PERFORMANCE ==========")
+
+connection = sqlite3.connect(":memory:")
+cursor = connection.cursor()
+
+cursor.execute("""
+CREATE TABLE complaints (
+    id INTEGER PRIMARY KEY,
+    station TEXT,
+    day TEXT,
+    complaint TEXT
+)
+""")
+
+# Generate 50,000 complaint records
+data = []
+
+for i in range(50000):
+    station = f"Station_{i % 100:03d}"
+    day = f"2026-11-{(i % 30) + 1:02d}"
+    text = examples[i % len(examples)][0]
+
+    data.append((station, day, text))
+
+cursor.executemany("""
+INSERT INTO complaints (station, day, complaint)
+VALUES (?, ?, ?)
+""", data)
+
+connection.commit()
+
+print("Total database records: 50000")
+
+
+# =========================================
+# B4.2 - MEASURE QUERY BEFORE INDEX
+# =========================================
+
+query = """
+SELECT COUNT(*)
+FROM complaints
+WHERE station = ? AND day = ?
+"""
+
+parameters = ("Station_042", "2026-11-13")
+
+
+def measure_query():
+    times = []
+
+    for _ in range(300):
+        start = time.perf_counter()
+
+        cursor.execute(query, parameters)
+        cursor.fetchone()
+
+        end = time.perf_counter()
+        times.append(end - start)
+
+    return statistics.median(times)
+
+
+before_index = measure_query()
+
+print("\nBefore indexing:")
+print("Query time:", round(before_index * 1000, 4), "ms")
+
+
+# =========================================
+# B4.2 - CREATE COMPOSITE INDEX
+# =========================================
+
+cursor.execute("""
+CREATE INDEX idx_station_day
+ON complaints(station, day)
+""")
+
+connection.commit()
+
+after_index = measure_query()
+
+print("\nAfter indexing:")
+print("Query time:", round(after_index * 1000, 4), "ms")
+
+
+# Calculate improvement
+if after_index > 0:
+    improvement = before_index / after_index
+
+    print("Speed improvement:",
+          round(improvement, 2), "times")
+
+
+# Check query execution plan
+print("\nQuery execution plan:")
+
+cursor.execute("""
+EXPLAIN QUERY PLAN
+SELECT COUNT(*)
+FROM complaints
+WHERE station = ? AND day = ?
+""", parameters)
+
+for row in cursor.fetchall():
+    print(row)
+
+
+# =========================================
+# B4.3 - PRODUCTION DECISION
+# =========================================
+
+print("\n========== PRODUCTION DECISION ==========")
+
+print("1. Store complaints in a database.")
+print("2. Clean and normalize complaint text.")
+print("3. Use an index on (station, day).")
+print("4. Use simple AI for initial sentiment analysis.")
+print("5. Human review for uncertain complaints.")
+print("6. Consider a trained model for larger")
+print("   multilingual and complex datasets.")
+
+print("\nFinal decision:")
+print("Use a database with indexing and a simple")
+print("sentiment model initially, then evaluate")
+print("whether a trained model is necessary.")
+
+connection.close()
+
+print("\n========== PROGRAM COMPLETED ==========")
