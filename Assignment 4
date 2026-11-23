@@ -1,0 +1,271 @@
+import os
+import re
+
+# -----------------------------------------
+# STEP 1: CREATE DEPARTMENT INPUT FILES
+# -----------------------------------------
+
+department_data = {
+    "cse.txt": [
+        "101;Arun;CSE;arun@gmail.com;Coding,Quiz",
+        "102;Bala;CSE;bala@gmail.com;Web Design"
+    ],
+    "ece.txt": [
+        "201;Divya;ECE;divya@gmail.com;Quiz,Robotics",
+        "202;Kavin;ECE;kavin@gmail.com;Robotics"
+    ],
+    "eee.txt": [
+        "301;Meena;EEE;meena@gmail.com;Paper Presentation"
+    ],
+    "mech.txt": [
+        "401;Ravi;MECH;ravi@gmail.com;Robotics,Coding"
+    ],
+    "civil.txt": [
+        "501;Anu;CIVIL;anu@gmail.com;Quiz"
+    ]
+}
+
+for filename, lines in department_data.items():
+    with open(filename, "w", encoding="utf-8") as file:
+        for line in lines:
+            file.write(line + "\n")
+
+
+# -----------------------------------------
+# STEP 2: VALIDATE EMAIL AND RECORD
+# -----------------------------------------
+
+def validate_email(email):
+    pattern = r"^[\w.-]+@[\w.-]+\.[A-Za-z]{2,}$"
+    return re.match(pattern, email) is not None
+
+
+def validate_record(parts):
+    if len(parts) != 5:
+        return False, "Record must contain five fields"
+
+    reg_no, name, department, email, events = parts
+
+    if not reg_no.strip():
+        return False, "Register number is missing"
+
+    if not name.strip():
+        return False, "Student name is missing"
+
+    if not department.strip():
+        return False, "Department is missing"
+
+    if not validate_email(email.strip()):
+        return False, "Invalid email address"
+
+    if not events.strip():
+        return False, "Selected events are missing"
+
+    return True, "Valid"
+
+
+# -----------------------------------------
+# STEP 3: READ DEPARTMENT FILE
+# -----------------------------------------
+
+def read_department_file(filename):
+    records = []
+
+    with open(filename, "r", encoding="utf-8") as file:
+        for line_number, line in enumerate(file, start=1):
+            line = line.strip()
+
+            if line:
+                records.append((line_number, line))
+
+    return records
+
+
+# -----------------------------------------
+# STEP 4: PROCESS AND CHECK DUPLICATES
+# -----------------------------------------
+
+def process_records(records, department, seen):
+    valid_records = []
+    errors = []
+
+    for line_number, line in records:
+        parts = line.split(";")
+
+        is_valid, message = validate_record(parts)
+
+        if not is_valid:
+            errors.append(
+                f"{department} line {line_number}: "
+                f"{message}: {line}"
+            )
+            continue
+
+        reg_no = parts[0].strip()
+
+        if reg_no in seen:
+            errors.append(
+                f"{department} line {line_number}: "
+                f"Duplicate registration: {reg_no}"
+            )
+            continue
+
+        seen.add(reg_no)
+
+        record = {
+            "reg_no": reg_no,
+            "name": parts[1].strip(),
+            "department": parts[2].strip(),
+            "email": parts[3].strip(),
+            "events": [
+                event.strip()
+                for event in parts[4].split(",")
+                if event.strip()
+            ]
+        }
+
+        valid_records.append(record)
+
+    return valid_records, errors
+
+
+# -----------------------------------------
+# STEP 5: GENERATE REPORTS
+# -----------------------------------------
+
+def generate_reports(records, errors):
+
+    os.makedirs("output/events", exist_ok=True)
+
+    # Master registration file
+    with open(
+        "output/master.txt", "w", encoding="utf-8"
+    ) as file:
+
+        for record in records:
+            line = (
+                record["reg_no"] + ";" +
+                record["name"] + ";" +
+                record["department"] + ";" +
+                record["email"] + ";" +
+                ",".join(record["events"])
+            )
+
+            file.write(line + "\n")
+
+    # Event-wise registration
+    event_data = {}
+
+    for record in records:
+        for event in record["events"]:
+            event_data.setdefault(event, [])
+            event_data[event].append(record)
+
+    for event, students in event_data.items():
+
+        safe_name = "".join(
+            char if char.isalnum() else "_"
+            for char in event
+        )
+
+        filename = f"output/events/{safe_name}.txt"
+
+        with open(filename, "w", encoding="utf-8") as file:
+            for student in students:
+                file.write(
+                    student["reg_no"] + ";" +
+                    student["name"] + ";" +
+                    student["department"] + "\n"
+                )
+
+    # Summary report
+    with open(
+        "output/summary.txt", "w", encoding="utf-8"
+    ) as file:
+
+        file.write("COLLEGE FEST SUMMARY\n")
+        file.write("--------------------\n")
+
+        file.write(
+            f"Total valid registrations: {len(records)}\n"
+        )
+
+        file.write("\nEvent-wise count:\n")
+
+        for event, students in event_data.items():
+            file.write(
+                f"{event}: {len(students)}\n"
+            )
+
+    # Error log
+    with open(
+        "output/errors.log", "w", encoding="utf-8"
+    ) as file:
+
+        for error in errors:
+            file.write(error + "\n")
+
+
+# -----------------------------------------
+# STEP 6: PROCESS ALL DEPARTMENT FILES
+# -----------------------------------------
+
+department_files = [
+    ("CSE", "cse.txt"),
+    ("ECE", "ece.txt"),
+    ("EEE", "eee.txt"),
+    ("MECH", "mech.txt"),
+    ("CIVIL", "civil.txt")
+]
+
+all_records = []
+all_errors = []
+seen = set()
+
+for department, filename in department_files:
+
+    try:
+        records = read_department_file(filename)
+
+        valid, errors = process_records(
+            records, department, seen
+        )
+
+        all_records.extend(valid)
+        all_errors.extend(errors)
+
+    except FileNotFoundError:
+        all_errors.append(
+            f"{department}: File not found - {filename}"
+        )
+
+    except PermissionError:
+        all_errors.append(
+            f"{department}: Permission denied - {filename}"
+        )
+
+    except OSError as error:
+        all_errors.append(
+            f"{department}: File error - {error}"
+        )
+
+
+# -----------------------------------------
+# STEP 7: GENERATE FINAL OUTPUT
+# -----------------------------------------
+
+generate_reports(all_records, all_errors)
+
+print("\n========== COLLEGE FEST REGISTRATION ==========")
+
+print("Total valid registrations:", len(all_records))
+print("Total errors:", len(all_errors))
+
+print("\nMaster file generated.")
+print("Event-wise files generated.")
+print("Summary report generated.")
+print("Error log generated.")
+
+print("\nOutput folder: output/")
+
+print("================================================")
