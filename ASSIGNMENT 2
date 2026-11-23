@@ -1,0 +1,75 @@
+DISCOUNT_PERCENT = 2.0
+
+
+class LoanError(Exception):
+    """Raised when loan inputs are invalid."""
+
+
+class VentureLoan:
+    """Calculates interest and settlement for a loan."""
+
+    def __init__(self, principal, rate, years):
+        self._validate(principal, rate, years)
+        self.principal = principal
+        self.rate = rate
+        self.years = years
+
+    @staticmethod
+    def _validate(principal, rate, years):
+        if principal < 0:
+            raise LoanError("Principal cannot be negative.")
+        if rate < 0:
+            raise LoanError("Interest rate cannot be negative.")
+        if years < 0:
+            raise LoanError("Years cannot be negative.")
+
+    def summary(self):
+        interest = (
+            self.principal * self.rate * self.years
+        ) / 100.0
+
+        amount = self.principal + interest
+        discount = interest * DISCOUNT_PERCENT / 100.0
+        settlement = amount - discount
+
+        return interest, amount, discount, settlement
+
+
+def main():
+    try:
+        n = int(input("Enter number of loans: "))
+
+        if n < 1:
+            raise LoanError("Number of loans must be positive.")
+
+        for i in range(n):
+            print(f"\nLoan {i + 1}")
+
+            values = input(
+                "Enter principal, rate and years: "
+            ).split()
+
+            if len(values) != 3:
+                raise LoanError(
+                    "Enter exactly three values for each loan."
+                )
+
+            try:
+                principal, rate, years = map(int, values)
+            except ValueError:
+                raise LoanError("All inputs must be integers.")
+
+            loan = VentureLoan(principal, rate, years)
+            interest, amount, discount, settlement = loan.summary()
+
+            print(f"{interest:.2f}")
+            print(f"{amount:.2f}")
+            print(f"{discount:.2f}")
+            print(f"{settlement:.2f}")
+
+    except (LoanError, ValueError, EOFError) as error:
+        print(f"Error: {error}")
+
+
+if __name__ == "__main__":
+    main()
