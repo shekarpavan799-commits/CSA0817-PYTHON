@@ -1,0 +1,86 @@
+import sys
+
+
+DISCOUNT_PERCENT = 2.0
+
+
+class LoanError(Exception):
+    """Raised when loan inputs are invalid."""
+
+
+class VentureLoan:
+    """Represents a simple-interest loan given to Leena by Meena."""
+
+    def __init__(self, principal: int, rate: int, years: int) -> None:
+        self._validate(principal, rate, years)
+        self.principal = principal
+        self.rate = rate
+        self.years = years
+
+    @staticmethod
+    def _validate(principal: int, rate: int, years: int) -> None:
+        if principal < 0:
+            raise LoanError("Principal amount cannot be negative.")
+        if rate < 0:
+            raise LoanError("Rate of interest cannot be negative.")
+        if years < 0:
+            raise LoanError("Number of years cannot be negative.")
+
+    def interest(self) -> float:
+        """Simple interest: (P * R * T) / 100."""
+        return (self.principal * self.rate * self.years) / 100.0
+
+    def total_amount(self) -> float:
+        """Principal plus total interest."""
+        return self.principal + self.interest()
+
+    def discount(self, percent: float = DISCOUNT_PERCENT) -> float:
+        """Special offer: discount on the total interest only."""
+        return self.interest() * percent / 100.0
+
+    def final_settlement(self) -> float:
+        """Amount Leena actually pays back after the discount."""
+        return self.total_amount() - self.discount()
+
+    def summary(self) -> tuple:
+        """Returns (interest, amount, discount, final settlement)."""
+        return (
+            self.interest(),
+            self.total_amount(),
+            self.discount(),
+            self.final_settlement(),
+        )
+
+
+def read_inputs() -> tuple:
+    """Reads 3 integers from standard input, across one or more lines."""
+    data = sys.stdin.read().split()
+    if len(data) < 3:
+        raise LoanError(
+            "Please provide 3 integers: principal, rate, and years."
+        )
+    try:
+        principal, rate, years = (int(value) for value in data[:3])
+    except ValueError:
+        raise LoanError("All inputs must be integers.")
+    return principal, rate, years
+
+
+def main() -> None:
+    try:
+        principal, rate, years = read_inputs()
+        loan = VentureLoan(principal, rate, years)
+    except LoanError as error:
+        print(f"Error: {error}")
+        sys.exit(1)
+
+    interest, amount, discount, settlement = loan.summary()
+
+    print(f"{interest:.2f}")
+    print(f"{amount:.2f}")
+    print(f"{discount:.2f}")
+    print(f"{settlement:.2f}")
+
+
+if __name__ == "__main__":
+    main()
